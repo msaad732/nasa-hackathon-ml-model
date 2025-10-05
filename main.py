@@ -1,68 +1,11 @@
-# import math
-# from fastapi import FastAPI
-# from pydantic import BaseModel
-
-# app = FastAPI()
-
-# # density by composition
-# DENSITY = {
-#     "metallic": 8000,  # kg/m^3
-#     "stony": 3000,
-#     "icy": 1000
-# }
-
-# class ImpactParams(BaseModel):
-#     diameter: float  # meters
-#     velocity: float  # km/s
-#     composition: str
-#     location: str  # "ocean" or "land"
-
-# @app.post("/predict")
-# def predict_impact(data: ImpactParams):
-#     radius = data.diameter / 2
-#     density = DENSITY.get(data.composition.lower(), 3000)
-#     volume = (4/3) * math.pi * (radius**3)
-#     mass = volume * density
-#     velocity = data.velocity * 1000  # convert km/s to m/s
-#     energy_joules = 0.5 * mass * (velocity**2)
-#     energy_mt = energy_joules / 4.18e15  # convert to megatons TNT
-
-#     # hazard scoring logic
-#     if energy_mt < 1:
-#         hazard = "Low"
-#     elif energy_mt < 10:
-#         hazard = "Moderate"
-#     elif energy_mt < 50:
-#         hazard = "Severe"
-#     else:
-#         hazard = "Catastrophic"
-
-#     # risk breakdown
-#     blast_risk = min(100, int(energy_mt * 2))
-#     thermal_risk = min(100, int(energy_mt * 1.5))
-#     tsunami_risk = 0
-
-#     if data.location.lower() == "ocean":
-#         tsunami_risk = min(100, int(energy_mt * 3))
-#         blast_risk = int(blast_risk * 0.7)
-#         thermal_risk = int(thermal_risk * 0.5)
-
-#     return {
-#         "hazard_level": hazard,
-#         "blast_risk": blast_risk,
-#         "thermal_risk": thermal_risk,
-#         "tsunami_risk": tsunami_risk,
-#         "estimated_megatons": round(energy_mt, 2)
-#     }
-
-
-# main.py — add/modify these parts
-
 import os
 import joblib
 import numpy as np
 import math
 from fastapi import FastAPI
+import joblib
+import impact_utils
+
 
 # existing imports / app definition
 app = FastAPI()
@@ -181,3 +124,53 @@ def predict_impact(data: ImpactParams):
     # map to risk percentages
     result = map_risks(energy_mt, location)
     return result
+
+
+
+# classifier = joblib.load("models/pha_classifier.joblib")
+
+# @app.post("/classify")
+# def classify_asteroid(diameter: float, albedo: float, eccentricity: float, moid: float):
+#     """
+#     Classify asteroid as Potentially Hazardous (PHA) or not.
+#     """
+#     X = np.array([[diameter, albedo, eccentricity, moid]])
+#     pred = classifier.predict(X)[0]
+#     return {
+#         "hazardous": bool(pred),
+#         "explanation": "Potentially Hazardous" if pred else "Not Hazardous"
+#     }
+
+class ImpactDiameterInput(BaseModel):
+    diameter_m: float
+    velocity_m_s: float
+    density: float | None = None
+
+class ImpactMassInput(BaseModel):
+    mass_kg: float
+    velocity_m_s: float
+
+@app.post("/predict/impact_seismic")
+def predict_impact_seismic(data: ImpactDiameterInput):
+    result = impact_utils.impact_from_diameter(
+        data.diameter_m,
+        data.velocity_m_s,
+        data.density or impact_utils.DEFAULT_DENSITY
+    )
+    return {
+        **result,
+        "description": f"The impact would generate seismic waves equivalent to a Magnitude {result['magnitude']:.2f} earthquake."
+    }
+
+
+
+@app.post("/predict/impact_seismic_mass")
+def predict_impact_seismic_mass(data: ImpactMassInput):
+    result = impact_utils.impact_from_mass(
+        data.mass_kg,
+        data.velocity_m_s
+    )
+    return {
+        **result,
+        "description": f"The impact would generate seismic waves equivalent to a Magnitude {result['magnitude']:.2f} earthquake."
+    }
